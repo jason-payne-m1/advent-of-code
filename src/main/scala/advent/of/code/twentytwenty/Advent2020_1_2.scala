@@ -1,4 +1,4 @@
-package com.m1finance.sandbox.twentytwenty
+package advent.of.code.twentytwenty
 
 object Advent2020_1_2 {
 
