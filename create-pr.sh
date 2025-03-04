@@ -43,6 +43,7 @@ usage() {
   echo ""
   echo "Options:"
   echo "  -t, --title TITLE       Set PR title"
+  echo "  -b, --branch BRANCH     Target branch (default: main)"
   echo "  -a, --auto-title        Auto-generate PR title"
   echo "  -s, --scala             Use Scala-specific prompt template"
   echo "  -k, --api-key KEY       API key for lite-llm"
@@ -63,6 +64,10 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     -t|--title)
       ARGS="$ARGS --title \"$2\""
+      shift 2
+      ;;
+    -b|--branch)
+      TARGET_BRANCH="$2"
       shift 2
       ;;
     -a|--auto-title)

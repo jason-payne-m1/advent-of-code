@@ -266,13 +266,20 @@ echo "Successfully generated PR description!"
 # Auto-generate title if requested
 if [ "$AUTO_TITLE" = true ]; then
   echo "Generating PR title using lite-llm..."
-  TITLE_PROMPT="You are a helpful assistant that creates concise PR titles. Based on the following PR description, generate a concise title (maximum 50 characters):
-
+  TITLE_PROMPT="You are a helpful assistant that creates concise PR titles. You write titles within the following parameters:
+  - STRICT maximum of 50 characters, do NOT exceed.
+  - Clearly summarize the changes.
+  - Use the PR description to gather context of the changes.
+  - Do not prepend with special characters.
+  - Do not truncate to meet the character limit by adding ... at the end.
+  Based on the following PR description, generate a concise title (maximum 50 characters):
 $PR_DESCRIPTION"
+
+ESCAPED_TITLE_PROMPT=$(jq -Rs . <<< "$TITLE_PROMPT")
 
 TITLE_REQUEST_PAYLOAD="{
   \"model\": \"Bedrock Claude 3.7 Sonnet\",
-  \"prompt\": $TITLE_PROMPT,
+  \"prompt\": $ESCAPED_TITLE_PROMPT,
   \"temperature\": 0.7
 }"
 
@@ -280,7 +287,7 @@ TITLE_REQUEST_PAYLOAD="{
   debug "Request payload structure: $(echo "$TITLE_REQUEST_PAYLOAD")"
   TITLE_RESPONSE=$(curl -s -X POST "$LITE_LLM_ENDPOINT" \
     "${HEADERS[@]}" \
-    -d "$REQUEST_PAYLOAD" 2>&1)
+    -d "$TITLE_REQUEST_PAYLOAD" 2>&1)
   
   PR_TITLE=$(echo "$TITLE_RESPONSE" | jq -r '.choices[0].text' 2>/dev/null)
   
