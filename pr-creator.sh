@@ -167,12 +167,16 @@ Git Diff:
 $DIFF"
 fi
 
+# Escape the prompt to be a valid JSON string
+ESCAPED_PROMPT=$(jq -Rs . <<< "$PROMPT")
+
 # Truncate the prompt if it's too large (API limits)
 MAX_TOKENS=8000
-PROMPT_LENGTH=${#PROMPT}
+PROMPT_LENGTH=${#ESCAPED_PROMPT}
 if [ "$PROMPT_LENGTH" -gt "$MAX_TOKENS" ]; then
   echo "Warning: Diff is very large ($PROMPT_LENGTH chars), truncating to $MAX_TOKENS chars..."
-  PROMPT="${PROMPT:0:$MAX_TOKENS}... [truncated due to size]"
+  ESCAPED_PROMPT=$(echo "$ESCAPED_PROMPT" | cut -c1-$MAX_TOKENS)
+  ESCAPED_PROMPT+="\""
 fi
 
 # Prepare headers for API request
@@ -187,13 +191,14 @@ fi
 # Prepare the request payload
 REQUEST_PAYLOAD="{
   \"model\": \"Bedrock Claude 3.7 Sonnet\",
-  \"prompt\": \"$PROMPT\",
+  \"prompt\": $ESCAPED_PROMPT,
   \"temperature\": 0.7
 }"
 
+
 debug "Request endpoint: $LITE_LLM_ENDPOINT"
 debug "Request headers: ${HEADERS[*]}"
- debug "Request payload structure: $(echo "$REQUEST_PAYLOAD")"
+debug "Request payload structure: $(echo "$REQUEST_PAYLOAD")"
 
 # Call lite-llm API to generate PR description with verbose output in debug mode
 echo "Generating PR description using lite-llm..."
@@ -227,7 +232,7 @@ else
     -d "$REQUEST_PAYLOAD")
 
   # Extract the generated description from the response
-  PR_DESCRIPTION=$(echo "$RESPONSE" | jq -r '.choices[0].message.content' 2>/dev/null)
+  PR_DESCRIPTION=$(echo "$RESPONSE" | jq -r '.choices[0].text' 2>/dev/null)
 fi
 
 # Check if we got a valid response
@@ -261,23 +266,23 @@ echo "Successfully generated PR description!"
 # Auto-generate title if requested
 if [ "$AUTO_TITLE" = true ]; then
   echo "Generating PR title using lite-llm..."
-  TITLE_PROMPT="Based on the following PR description, generate a concise title (maximum 50 characters):
+  TITLE_PROMPT="You are a helpful assistant that creates concise PR titles. Based on the following PR description, generate a concise title (maximum 50 characters):
 
 $PR_DESCRIPTION"
 
+TITLE_REQUEST_PAYLOAD="{
+  \"model\": \"Bedrock Claude 3.7 Sonnet\",
+  \"prompt\": $TITLE_PROMPT,
+  \"temperature\": 0.7
+}"
+
   debug "Making title API call..."
+  debug "Request payload structure: $(echo "$TITLE_REQUEST_PAYLOAD")"
   TITLE_RESPONSE=$(curl -s -X POST "$LITE_LLM_ENDPOINT" \
     "${HEADERS[@]}" \
-    -d "{
-      \"model\": \"$LITE_LLM_MODEL\",
-      \"messages\": [
-        {\"role\": \"system\", \"content\": \"You are a helpful assistant that creates concise PR titles.\"},
-        {\"role\": \"user\", \"content\": \"$TITLE_PROMPT\"}
-      ],
-      \"temperature\": 0.7
-    }")
+    -d "$REQUEST_PAYLOAD" 2>&1)
   
-  PR_TITLE=$(echo "$TITLE_RESPONSE" | jq -r '.choices[0].message.content')
+  PR_TITLE=$(echo "$TITLE_RESPONSE" | jq -r '.choices[0].text' 2>/dev/null)
   
   # Remove quotes if present and truncate if needed
   PR_TITLE=$(echo "$PR_TITLE" | sed 's/^"//;s/"$//')
@@ -294,8 +299,8 @@ fi
 
 # Create the PR
 echo "Creating PR with title: $PR_TITLE"
-echo "Description preview (first 3 lines):"
-echo "$PR_DESCRIPTION" | head -n 3
+echo "Description preview (first 10 lines):"
+echo "$PR_DESCRIPTION" | head -n 10
 echo "..."
 
 # Confirm with user
